@@ -16,7 +16,6 @@
     .error { background: #fee2e2; color: #991b1b; }
     #audioControls { margin-top: 20px; display: none; }
     audio { width: 100%; margin-top: 10px; }
-    .mic-active { background: #ef4444 !important; }
   </style>
 </head>
 <body>
@@ -24,7 +23,6 @@
     <h1>Fox Voice Room</h1>
     <p>Click to join the voice conversation with Fox.</p>
     <button id="joinBtn" onclick="joinRoom()">Join Room</button>
-    <button id="muteBtn" onclick="toggleMute()" style="display:none; background: #10b981;">Mute Mic</button>
     <div id="status"></div>
     <div id="audioControls">
       <p>Fox's audio:</p>
@@ -34,31 +32,15 @@
 
   <script type="module">
     import * as Livekit from 'https://cdn.jsdelivr.net/npm/livekit-client@latest/+esm';
-    window.LivekitClient = Livekit;
     
-    const TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6ImZveC12b2ljZS1yb29tIiwiY2FuUHVibGlzaCI6dHJ1ZSwiY2FuU3Vic2NyaWJlIjp0cnVlLCJjYW5QdWJsaXNoRGF0YSI6dHJ1ZX0sInN1YiI6IlN0YW4iLCJpc3MiOiJBUElzVHRGSHZMM2JpVmYiLCJuYmYiOjE3NzExNTQwNzMsImV4cCI6MTc3MTE3NTY3M30._GdVpG80W9MYJyVvMQG0G8MVOaKxpew8OaHXXde00Wg";
+    const TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6ImZveC12b2ljZS1yb29tIiwiY2FuUHVibGlNoI6dHJ1ZSwiY2FuU3Vic2NyaWJlIjp0cnVlLCJjYW5QdWJsaXNoRGF0YSI6dHJ1ZX0sInN1YiI6IlN0YW4iLCJpc3MiOiJBUElzVHRGSHZMM2JpVmYiLCJuYmYiOjE3NzExNTQwNzMsImV4cCI6MTc3MTE3NTY3M30._GdVpG80W9MYJyVvMQG0G8MVOaKxpew8OaHXXde00Wg";
     const SERVER_URL = "wss://onetesting-06fiqirn.livekit.cloud";
-    const ROOM_NAME = "fox-voice-room";
     
     let room = null;
-    let localTrack = null;
-    let isMuted = false;
 
     function showStatus(message, type) {
       document.getElementById('status').className = type;
       document.getElementById('status').textContent = message;
-    }
-
-    async function getLocalTracks() {
-      try {
-        // Request microphone access
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        return stream;
-      } catch (e) {
-        console.error('Error getting local tracks:', e);
-        showStatus('Error: Could not access microphone. Please allow microphone access.', 'error');
-        return null;
-      }
     }
 
     window.joinRoom = async function() {
@@ -66,14 +48,17 @@
       document.getElementById('joinBtn').disabled = true;
       
       try {
+        // Get microphone access first
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        console.log('Got microphone access');
+        
         // Create room
-        room = new LivekitClient.Room();
+        room = new Livekit.Room();
         
         // Handle connection
         room.on('connected', () => {
-          showStatus('Connected! You can now talk to Fox.', 'connected');
+          showStatus('Connected!', 'connected');
           document.getElementById('joinBtn').style.display = 'none';
-          document.getElementById('muteBtn').style.display = 'inline-block';
           document.getElementById('audioControls').style.display = 'block';
         });
         
@@ -81,49 +66,36 @@
           showStatus('Disconnected.', 'info');
           document.getElementById('joinBtn').style.display = 'inline-block';
           document.getElementById('joinBtn').disabled = false;
-          document.getElementById('muteBtn').style.display = 'none';
           document.getElementById('audioControls').style.display = 'none';
         });
         
-        // Handle incoming audio tracks
-        room.on('trackSubscribed', (track, publication, participant) => {
-          console.log('Track subscribed:', track.kind);
-          if (track.kind === LivekitClient.TrackKind.Audio) {
+        // Handle incoming audio
+        room.on('trackSubscribed', (track) => {
+          if (track.kind === Livekit.TrackKind.Audio) {
             const audio = track.attach();
             document.getElementById('audioPlayer').srcObject = new MediaStream([track.mediaStreamTrack]);
-            console.log('Audio attached');
           }
         });
         
-        // Connect to room
+        // Connect
         await room.connect(SERVER_URL, TOKEN);
-        console.log('Connected to:', ROOM_NAME);
+        console.log('Connected to room');
         
-        // Get local audio tracks and publish them
-        const stream = await getLocalTracks();
-        if (stream) {
-          const audioTrack = stream.getAudioTracks()[0];
-          if (audioTrack) {
-            // Create LiveKit audio track from the microphone track
-            localTrack = LivekitClient.LocalTrack.createAudioTrack(audioTrack);
-            await room.localParticipant.publishTrack(localTrack);
-            console.log('Published local audio track');
-          }
+        // Publish microphone using createLocalTracks
+        const localTracks = await Livekit.createLocalTracks({
+          audio: true,
+          video: false
+        });
+        
+        for (const track of localTracks) {
+          await room.localParticipant.publishTrack(track);
+          console.log('Published track:', track.kind);
         }
         
       } catch (e) {
-        console.error('Connection error:', e);
+        console.error('Error:', e);
         showStatus('Error: ' + e.message, 'error');
         document.getElementById('joinBtn').disabled = false;
-      }
-    };
-
-    window.toggleMute = function() {
-      if (localTrack) {
-        isMuted = !isMuted;
-        localTrack.enabled = !isMuted;
-        document.getElementById('muteBtn').textContent = isMuted ? 'Unmute Mic' : 'Mute Mic';
-        document.getElementById('muteBtn').style.background = isMuted ? '#ef4444' : '#10b981';
       }
     };
   </script>
