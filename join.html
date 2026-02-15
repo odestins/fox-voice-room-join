@@ -63,7 +63,7 @@
       
       try {
         // Create LiveKit room
-        room = new LiveKit.Room();
+        room = new LivekitClient.Room();
         
         // Handle events
         room.on('connected', () => {
@@ -83,7 +83,7 @@
         });
         
         room.on('trackSubscribed', (track, publication, participant) => {
-          if (track.kind === LiveKit.TrackKind.Audio) {
+          if (track.kind === LivekitClient.TrackKind.Audio) {
             const audio = track.attach();
             document.getElementById('audioPlayer').srcObject = new MediaStream([track.mediaStreamTrack]);
             console.log('Audio track attached');
