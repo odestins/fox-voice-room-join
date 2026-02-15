@@ -4,7 +4,6 @@
   <title>Join Fox Voice Room</title>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script type="module" src="https://cdn.jsdelivr.net/npm/livekit-client@latest/+esm"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: #1a1a2e; color: #fff; min-height: 100vh; }
     h1 { color: #6366f1; text-align: center; }
@@ -17,6 +16,7 @@
     .error { background: #fee2e2; color: #991b1b; }
     #audioControls { margin-top: 20px; display: none; }
     audio { width: 100%; margin-top: 10px; }
+    .mic-active { background: #ef4444 !important; }
   </style>
 </head>
 <body>
@@ -24,6 +24,7 @@
     <h1>Fox Voice Room</h1>
     <p>Click to join the voice conversation with Fox.</p>
     <button id="joinBtn" onclick="joinRoom()">Join Room</button>
+    <button id="muteBtn" onclick="toggleMute()" style="display:none; background: #10b981;">Mute Mic</button>
     <div id="status"></div>
     <div id="audioControls">
       <p>Fox's audio:</p>
@@ -40,10 +41,24 @@
     const ROOM_NAME = "fox-voice-room";
     
     let room = null;
+    let localTrack = null;
+    let isMuted = false;
 
     function showStatus(message, type) {
       document.getElementById('status').className = type;
       document.getElementById('status').textContent = message;
+    }
+
+    async function getLocalTracks() {
+      try {
+        // Request microphone access
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        return stream;
+      } catch (e) {
+        console.error('Error getting local tracks:', e);
+        showStatus('Error: Could not access microphone. Please allow microphone access.', 'error');
+        return null;
+      }
     }
 
     window.joinRoom = async function() {
@@ -51,23 +66,64 @@
       document.getElementById('joinBtn').disabled = true;
       
       try {
+        // Create room
         room = new LivekitClient.Room();
         
+        // Handle connection
         room.on('connected', () => {
-          showStatus('Connected!', 'connected');
+          showStatus('Connected! You can now talk to Fox.', 'connected');
+          document.getElementById('joinBtn').style.display = 'none';
+          document.getElementById('muteBtn').style.display = 'inline-block';
           document.getElementById('audioControls').style.display = 'block';
         });
         
-        room.on('trackSubscribed', (track) => {
+        room.on('disconnected', () => {
+          showStatus('Disconnected.', 'info');
+          document.getElementById('joinBtn').style.display = 'inline-block';
+          document.getElementById('joinBtn').disabled = false;
+          document.getElementById('muteBtn').style.display = 'none';
+          document.getElementById('audioControls').style.display = 'none';
+        });
+        
+        // Handle incoming audio tracks
+        room.on('trackSubscribed', (track, publication, participant) => {
+          console.log('Track subscribed:', track.kind);
           if (track.kind === LivekitClient.TrackKind.Audio) {
+            const audio = track.attach();
             document.getElementById('audioPlayer').srcObject = new MediaStream([track.mediaStreamTrack]);
+            console.log('Audio attached');
           }
         });
         
+        // Connect to room
         await room.connect(SERVER_URL, TOKEN);
+        console.log('Connected to:', ROOM_NAME);
+        
+        // Get local audio tracks and publish them
+        const stream = await getLocalTracks();
+        if (stream) {
+          const audioTrack = stream.getAudioTracks()[0];
+          if (audioTrack) {
+            // Create LiveKit audio track from the microphone track
+            localTrack = LivekitClient.LocalTrack.createAudioTrack(audioTrack);
+            await room.localParticipant.publishTrack(localTrack);
+            console.log('Published local audio track');
+          }
+        }
+        
       } catch (e) {
+        console.error('Connection error:', e);
         showStatus('Error: ' + e.message, 'error');
         document.getElementById('joinBtn').disabled = false;
+      }
+    };
+
+    window.toggleMute = function() {
+      if (localTrack) {
+        isMuted = !isMuted;
+        localTrack.enabled = !isMuted;
+        document.getElementById('muteBtn').textContent = isMuted ? 'Unmute Mic' : 'Mute Mic';
+        document.getElementById('muteBtn').style.background = isMuted ? '#ef4444' : '#10b981';
       }
     };
   </script>
