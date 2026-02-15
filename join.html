@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Join Fox Voice Room</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://unpkg.com/livekit-client/dist/livekit.umd.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: #1a1a2e; color: #fff; min-height: 100vh; }
+    h1 { color: #6366f1; text-align: center; }
+    .container { background: #16213e; padding: 30px; border-radius: 16px; text-align: center; }
+    button { padding: 16px 32px; font-size: 18px; background: #6366f1; color: white; border: none; border-radius: 12px; cursor: pointer; margin: 10px; transition: all 0.3s; }
+    button:hover { background: #4f46e5; transform: scale(1.05); }
+    button:disabled { background: #4b5563; cursor: not-allowed; }
+    #status { margin-top: 20px; padding: 15px; border-radius: 8px; font-size: 16px; }
+    .connecting { background: #fef3c7; color: #92400e; }
+    .connected { background: #d1fae5; color: #065f46; }
+    .error { background: #fee2e2; color: #991b1b; }
+    .info { background: #dbeafe; color: #1e40af; }
+    #audioControls { margin-top: 20px; display: none; }
+    audio { width: 100%; margin-top: 10px; }
+    .hint { color: #9ca3af; margin-top: 20px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Fox Voice Room</h1>
+    <p>Click the button below to join the voice conversation with Fox.</p>
+    
+    <button id="joinBtn" onclick="joinRoom()">Join Room</button>
+    <button id="leaveBtn" onclick="leaveRoom()" style="display:none; background: #ef4444;">Leave Room</button>
+    
+    <div id="status"></div>
+    
+    <div id="audioControls">
+      <p>Fox's audio:</p>
+      <audio id="audioPlayer" controls autoplay></audio>
+    </div>
+    
+    <p class="hint">Make sure to allow microphone access when prompted.</p>
+  </div>
+
+  <script>
+    // Embedded token for Stan
+    const TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6ImZveC12b2ljZS1yb29tIiwiY2FuUHVibGlzaCI6dHJ1ZSwiY2FuU3Vic2NyaWJlIjp0cnVlLCJjYW5QdWJsaXNoRGF0YSI6dHJ1ZX0sInN1YiI6IlN0YW4iLCJpc3MiOiJBUElzVHRGSHZMM2JpVmYiLCJuYmYiOjE3NzExNTE1MzMsImV4cCI6MTc3MTE3MzEzM30.A5jWDfq2uS3ItufPoQFjJytJKjufU6DlUTuKwiY74Kg";
+    const SERVER_URL = "wss://onetesting-06fiqirn.livekit.cloud";
+    const ROOM_NAME = "fox-voice-room";
+    
+    let room = null;
+
+    function showStatus(message, type) {
+      const status = document.getElementById('status');
+      status.className = type;
+      status.textContent = message;
+    }
+
+    async function joinRoom() {
+      const joinBtn = document.getElementById('joinBtn');
+      const leaveBtn = document.getElementById('leaveBtn');
+      
+      showStatus('Connecting to room...', 'connecting');
+      joinBtn.disabled = true;
+      
+      try {
+        // Create LiveKit room
+        room = new LiveKit.Room();
+        
+        // Handle events
+        room.on('connected', () => {
+          showStatus('Connected! You are in the room with Fox.', 'connected');
+          joinBtn.style.display = 'none';
+          leaveBtn.style.display = 'inline-block';
+          document.getElementById('audioControls').style.display = 'block';
+          console.log('Connected to room');
+        });
+        
+        room.on('disconnected', () => {
+          showStatus('Disconnected from room.', 'info');
+          joinBtn.style.display = 'inline-block';
+          joinBtn.disabled = false;
+          leaveBtn.style.display = 'none';
+          document.getElementById('audioControls').style.display = 'none';
+        });
+        
+        room.on('trackSubscribed', (track, publication, participant) => {
+          if (track.kind === LiveKit.TrackKind.Audio) {
+            const audio = track.attach();
+            document.getElementById('audioPlayer').srcObject = new MediaStream([track.mediaStreamTrack]);
+            console.log('Audio track attached');
+          }
+        });
+        
+        room.on('trackUnsubscribed', (track, publication, participant) => {
+          track.detach().forEach(element => element.remove());
+        });
+        
+        // Connect to room
+        await room.connect(SERVER_URL, TOKEN);
+        console.log('Connected to:', ROOM_NAME);
+        
+      } catch (error) {
+        showStatus('Error: ' + error.message, 'error');
+        joinBtn.disabled = false;
+        console.error('Connection error:', error);
+      }
+    }
+
+    async function leaveRoom() {
+      if (room) {
+        await room.disconnect();
+        room = null;
+      }
+    }
+  </script>
+</body>
+</html>
